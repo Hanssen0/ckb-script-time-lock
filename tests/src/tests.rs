@@ -247,3 +247,44 @@ fn test_sign_with_correct_key() {
         .expect("pass verification");
     println!("consume cycles: {}", cycles);
 }
+
+#[test]
+fn test_multiple_time() {
+    // generate key pair
+    let privkey = Generator::random_privkey();
+    let pubkey = privkey.pubkey().expect("pubkey");
+    let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
+
+    let mut context = Context::default();
+    let (tx_builder, lock_script) = bootstrap(
+        TransactionBuilder::default(),
+        &mut context,
+        pubkey_hash,
+    );
+    let tx_builder = with_time_header(tx_builder, &mut context, 100);
+    let tx_builder = with_time_header(tx_builder, &mut context, 1000);
+
+    // prepare cells
+    let input_out_point = context.create_cell(new_cell_output(1000, &lock_script), Bytes::new());
+    let input = CellInput::new_builder()
+        .previous_output(input_out_point.clone())
+        .build();
+
+    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
+    let outputs_data = vec![Bytes::new(); 2];
+
+    // build transaction
+    let tx = tx_builder
+        .input(input)
+        .outputs(outputs)
+        .outputs_data(outputs_data.pack())
+        .build();
+    let tx = context.complete_tx(tx);
+    let tx = sign_tx(tx, &privkey);
+
+    // run
+    let cycles = context
+        .verify_tx(&tx, MAX_CYCLES)
+        .expect("pass verification");
+    println!("consume cycles: {}", cycles);
+}

@@ -10,7 +10,6 @@ pub enum Error {
     Secp256k1,
     WrongPubkey,
     TimeLimitNotReached,
-    CurrentTimeNotGiven,
 }
 
 impl From<SysError> for Error {

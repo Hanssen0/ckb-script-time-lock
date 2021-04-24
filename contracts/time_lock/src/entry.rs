@@ -2,7 +2,7 @@ use core::result::Result;
 
 use ckb_std::{
     debug,
-    high_level::{load_script, load_header},
+    high_level::{load_script, load_header, QueryIter},
     ckb_constants::Source,
     ckb_types::{bytes::Bytes, prelude::*},
     dynamic_loading_c_impl::CKBDLContext,
@@ -23,13 +23,7 @@ pub fn main() -> Result<(), Error> {
     let pubkey = args.slice(0..20);
     let time_limit = args.slice(20..28);
 
-    // Check time limit
-    let timestamp = match load_header(0, Source::HeaderDep) {
-        Ok(header) => header.raw().timestamp().unpack().to_be_bytes(),
-        Err(_) => return Err(Error::CurrentTimeNotGiven),
-    };
-
-    if time_limit.gt(&timestamp) {
+    if !has_passed_time_limit(time_limit) {
         return Err(Error::TimeLimitNotReached);
     }
 
@@ -39,6 +33,16 @@ pub fn main() -> Result<(), Error> {
 
     test_validate_blake2b_sighash_all(&lib, &pubkey)
 
+}
+
+fn has_passed_time_limit(time_limit: Bytes) -> bool {
+    for header in QueryIter::new(load_header, Source::HeaderDep) {
+        let timestamp = header.raw().timestamp().unpack().to_be_bytes();
+        if time_limit.le(&timestamp) {
+            return true;
+        }
+    };
+    false
 }
 
 fn test_validate_blake2b_sighash_all(
