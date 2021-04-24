@@ -1,0 +1,9 @@
+[[cells]]
+name = "time_lock"
+enable_type_id = false
+location = { file = "build/release/time_lock" }
+
+[lock]
+code_hash = "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8"
+args = "0x23e986adbf6d7cccd2bf06987407f76865c1d43c"
+hash_type = "type"

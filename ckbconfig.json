@@ -1,0 +1,13 @@
+{
+  "language": "rust",
+  "main": "contracts/time_lock/entry.rs",
+  "compilers": {
+    "capsule": "v0.4.3",
+    "riscv": ""
+  },
+  "output": "",
+  "scripts": {
+    "build": ""
+  },
+  "debug": {}
+}

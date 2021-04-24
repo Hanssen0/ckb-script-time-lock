@@ -1,0 +1,9 @@
+[package]
+name = "time_lock"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+ckb-std = "0.7.1"
+
+ckb-lib-secp256k1 = { path = "../../ckb-lib-secp256k1" }

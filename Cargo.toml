@@ -1,0 +1,9 @@
+[workspace]
+members = ["tests", "ckb-lib-secp256k1", "contracts/time_lock"]
+
+[profile.release]
+overflow-checks = true
+opt-level = 's'
+lto = true
+codegen-units = 1
+panic = 'abort'
