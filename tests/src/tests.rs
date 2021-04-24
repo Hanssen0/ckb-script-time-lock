@@ -5,13 +5,14 @@ use ckb_tool::ckb_crypto::secp::{Generator, Privkey};
 use ckb_tool::ckb_hash::{blake2b_256, new_blake2b};
 use ckb_tool::ckb_types::{
     bytes::Bytes,
-    core::{TransactionBuilder, TransactionView},
+    core::{TransactionBuilder, TransactionView, HeaderBuilder},
     packed::{self, *},
     prelude::*,
     H256,
 };
 use ckb_tool::ckb_types::packed::{Script, CellOutput};
 use std::fs;
+use std::iter::Extend;
 
 const MAX_CYCLES: u64 = 10_000_000;
 
@@ -91,37 +92,65 @@ fn with_secp256k1_cell_deps(builder: TransactionBuilder, context: &mut Context)
     builder.cell_dep(secp256k1_dep).cell_dep(secp256k1_data_dep)
 }
 
-fn new_cell_output(capacity: u64, script: &Script) -> CellOutput {
-    CellOutput::new_builder().capacity(capacity.pack()).lock(script.clone()).build()
-}
-
-#[test]
-fn test_sign_with_correct_key() {
-    // generate key pair
-    let privkey = Generator::random_privkey();
-    let pubkey = privkey.pubkey().expect("pubkey");
-    let pubkey_hash = blake160(&pubkey.serialize());
-
-    // deploy contract
-    let mut context = Context::default();
-    let tx_builder = with_secp256k1_cell_deps(TransactionBuilder::default(), &mut context);
-
+fn load_script(builder: TransactionBuilder, context: &mut Context, mut pubkey_hash: Vec<u8>)
+    -> (TransactionBuilder, Script) {
     let contract_bin: Bytes = Loader::default().load_binary("time_lock");
     let out_point = context.deploy_cell(contract_bin);
 
-    // prepare scripts
+    // Time limit info
+    pubkey_hash.extend(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00]);
     let lock_script = context
         .build_script(&out_point, pubkey_hash.to_vec().into())
         .expect("script");
     let lock_script_dep = CellDep::new_builder().out_point(out_point).build();
 
+    (builder.cell_dep(lock_script_dep), lock_script)
+}
+
+fn bootstrap(builder: TransactionBuilder, context: &mut Context, pubkey_hash: Vec<u8>)
+    -> (TransactionBuilder, Script) {
+    let builder = with_secp256k1_cell_deps(builder, context);
+
+    load_script(builder, context, pubkey_hash)
+}
+
+
+fn with_time_header(builder: TransactionBuilder, context: &mut Context, timestamp: u64)
+    -> TransactionBuilder {
+    let header = HeaderBuilder::default()
+        .timestamp(timestamp.pack())
+        .build();
+    context.insert_header(header.clone());
+
+    builder.header_dep(header.hash())
+}
+
+fn new_cell_output(capacity: u64, script: &Script) -> CellOutput {
+    CellOutput::new_builder().capacity(capacity.pack()).lock(script.clone()).build()
+}
+
+#[test]
+fn test_time_limit_not_reached_with_correct_key() {
+    // generate key pair
+    let privkey = Generator::random_privkey();
+    let pubkey = privkey.pubkey().expect("pubkey");
+    let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
+
+    let mut context = Context::default();
+    let (tx_builder, lock_script) = bootstrap(
+        TransactionBuilder::default(),
+        &mut context,
+        pubkey_hash,
+    );
+    let tx_builder = with_time_header(tx_builder, &mut context, 100);
+
     // prepare cells
     let input_out_point = context.create_cell(new_cell_output(1000, &lock_script), Bytes::new());
     let input = CellInput::new_builder()
-        .previous_output(input_out_point)
+        .previous_output(input_out_point.clone())
         .build();
-    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
 
+    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
     let outputs_data = vec![Bytes::new(); 2];
 
     // build transaction
@@ -129,18 +158,14 @@ fn test_sign_with_correct_key() {
         .input(input)
         .outputs(outputs)
         .outputs_data(outputs_data.pack())
-        .cell_dep(lock_script_dep)
         .build();
     let tx = context.complete_tx(tx);
-
-    // sign
     let tx = sign_tx(tx, &privkey);
 
     // run
-    let cycles = context
+    context
         .verify_tx(&tx, MAX_CYCLES)
-        .expect("pass verification");
-    println!("consume cycles: {}", cycles);
+        .expect_err("pass verification");
 }
 
 #[test]
@@ -148,21 +173,16 @@ fn test_sign_with_wrong_key() {
     // generate key pair
     let privkey = Generator::random_privkey();
     let pubkey = privkey.pubkey().expect("pubkey");
-    let pubkey_hash = blake160(&pubkey.serialize());
+    let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
     let wrong_privkey = Generator::random_privkey();
 
-    // deploy contract
     let mut context = Context::default();
-    let tx_builder = with_secp256k1_cell_deps(TransactionBuilder::default(), &mut context);
-
-    let contract_bin: Bytes = Loader::default().load_binary("time_lock");
-    let out_point = context.deploy_cell(contract_bin);
-
-    // prepare scripts
-    let lock_script = context
-        .build_script(&out_point, pubkey_hash.to_vec().into())
-        .expect("script");
-    let lock_script_dep = CellDep::new_builder().out_point(out_point).build();
+    let (tx_builder, lock_script) = bootstrap(
+        TransactionBuilder::default(),
+        &mut context,
+        pubkey_hash,
+    );
+    let tx_builder = with_time_header(tx_builder, &mut context, 1000);
 
     // prepare cells
     let input_out_point = context.create_cell(new_cell_output(1000, &lock_script), Bytes::new());
@@ -178,7 +198,6 @@ fn test_sign_with_wrong_key() {
         .input(input)
         .outputs(outputs)
         .outputs_data(outputs_data.pack())
-        .cell_dep(lock_script_dep)
         .build();
     let tx = context.complete_tx(tx);
 
@@ -187,4 +206,44 @@ fn test_sign_with_wrong_key() {
     context
         .verify_tx(&tx, MAX_CYCLES)
         .expect_err("pass verification");
+}
+
+#[test]
+fn test_sign_with_correct_key() {
+    // generate key pair
+    let privkey = Generator::random_privkey();
+    let pubkey = privkey.pubkey().expect("pubkey");
+    let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
+
+    let mut context = Context::default();
+    let (tx_builder, lock_script) = bootstrap(
+        TransactionBuilder::default(),
+        &mut context,
+        pubkey_hash,
+    );
+    let tx_builder = with_time_header(tx_builder, &mut context, 1000);
+
+    // prepare cells
+    let input_out_point = context.create_cell(new_cell_output(1000, &lock_script), Bytes::new());
+    let input = CellInput::new_builder()
+        .previous_output(input_out_point.clone())
+        .build();
+
+    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
+    let outputs_data = vec![Bytes::new(); 2];
+
+    // build transaction
+    let tx = tx_builder
+        .input(input)
+        .outputs(outputs)
+        .outputs_data(outputs_data.pack())
+        .build();
+    let tx = context.complete_tx(tx);
+    let tx = sign_tx(tx, &privkey);
+
+    // run
+    let cycles = context
+        .verify_tx(&tx, MAX_CYCLES)
+        .expect("pass verification");
+    println!("consume cycles: {}", cycles);
 }
