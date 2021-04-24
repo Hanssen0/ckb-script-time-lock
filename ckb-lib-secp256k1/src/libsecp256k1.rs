@@ -1,5 +1,8 @@
+use crate::alloc::{
+    alloc::{alloc, Layout},
+    boxed::Box,
+};
 use crate::code_hashes::CODE_HASH_SECP256K1;
-use crate::alloc::{alloc::{alloc, Layout}, boxed::Box};
 use ckb_std::dynamic_loading_c_impl::{CKBDLContext, Symbol};
 
 /// function signature of validate_secp256k1_blake2b_sighash_all

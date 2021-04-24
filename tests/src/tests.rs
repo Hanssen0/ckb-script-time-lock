@@ -3,14 +3,14 @@ use ckb_system_scripts::BUNDLED_CELL;
 use ckb_testtool::context::Context;
 use ckb_tool::ckb_crypto::secp::{Generator, Privkey};
 use ckb_tool::ckb_hash::{blake2b_256, new_blake2b};
+use ckb_tool::ckb_types::packed::{CellOutput, Script};
 use ckb_tool::ckb_types::{
     bytes::Bytes,
-    core::{TransactionBuilder, TransactionView, HeaderBuilder},
+    core::{HeaderBuilder, TransactionBuilder, TransactionView},
     packed::{self, *},
     prelude::*,
     H256,
 };
-use ckb_tool::ckb_types::packed::{Script, CellOutput};
 use std::fs;
 use std::iter::Extend;
 
@@ -72,8 +72,10 @@ fn sign_tx(tx: TransactionView, key: &Privkey) -> TransactionView {
         .build()
 }
 
-fn with_secp256k1_cell_deps(builder: TransactionBuilder, context: &mut Context)
-    -> TransactionBuilder {
+fn with_secp256k1_cell_deps(
+    builder: TransactionBuilder,
+    context: &mut Context,
+) -> TransactionBuilder {
     let secp256k1_bin: Bytes =
         fs::read("../ckb-miscellaneous-scripts/build/secp256k1_blake2b_sighash_all_dual")
             .expect("load secp256k1")
@@ -92,8 +94,11 @@ fn with_secp256k1_cell_deps(builder: TransactionBuilder, context: &mut Context)
     builder.cell_dep(secp256k1_dep).cell_dep(secp256k1_data_dep)
 }
 
-fn load_script(builder: TransactionBuilder, context: &mut Context, mut pubkey_hash: Vec<u8>)
-    -> (TransactionBuilder, Script) {
+fn load_script(
+    builder: TransactionBuilder,
+    context: &mut Context,
+    mut pubkey_hash: Vec<u8>,
+) -> (TransactionBuilder, Script) {
     let contract_bin: Bytes = Loader::default().load_binary("time_lock");
     let out_point = context.deploy_cell(contract_bin);
 
@@ -107,26 +112,32 @@ fn load_script(builder: TransactionBuilder, context: &mut Context, mut pubkey_ha
     (builder.cell_dep(lock_script_dep), lock_script)
 }
 
-fn bootstrap(builder: TransactionBuilder, context: &mut Context, pubkey_hash: Vec<u8>)
-    -> (TransactionBuilder, Script) {
+fn bootstrap(
+    builder: TransactionBuilder,
+    context: &mut Context,
+    pubkey_hash: Vec<u8>,
+) -> (TransactionBuilder, Script) {
     let builder = with_secp256k1_cell_deps(builder, context);
 
     load_script(builder, context, pubkey_hash)
 }
 
-
-fn with_time_header(builder: TransactionBuilder, context: &mut Context, timestamp: u64)
-    -> TransactionBuilder {
-    let header = HeaderBuilder::default()
-        .timestamp(timestamp.pack())
-        .build();
+fn with_time_header(
+    builder: TransactionBuilder,
+    context: &mut Context,
+    timestamp: u64,
+) -> TransactionBuilder {
+    let header = HeaderBuilder::default().timestamp(timestamp.pack()).build();
     context.insert_header(header.clone());
 
     builder.header_dep(header.hash())
 }
 
 fn new_cell_output(capacity: u64, script: &Script) -> CellOutput {
-    CellOutput::new_builder().capacity(capacity.pack()).lock(script.clone()).build()
+    CellOutput::new_builder()
+        .capacity(capacity.pack())
+        .lock(script.clone())
+        .build()
 }
 
 #[test]
@@ -137,11 +148,8 @@ fn test_time_limit_not_reached_with_correct_key() {
     let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
 
     let mut context = Context::default();
-    let (tx_builder, lock_script) = bootstrap(
-        TransactionBuilder::default(),
-        &mut context,
-        pubkey_hash,
-    );
+    let (tx_builder, lock_script) =
+        bootstrap(TransactionBuilder::default(), &mut context, pubkey_hash);
     let tx_builder = with_time_header(tx_builder, &mut context, 100);
 
     // prepare cells
@@ -150,7 +158,10 @@ fn test_time_limit_not_reached_with_correct_key() {
         .previous_output(input_out_point.clone())
         .build();
 
-    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
+    let outputs = vec![
+        new_cell_output(500, &lock_script),
+        new_cell_output(500, &lock_script),
+    ];
     let outputs_data = vec![Bytes::new(); 2];
 
     // build transaction
@@ -177,11 +188,8 @@ fn test_sign_with_wrong_key() {
     let wrong_privkey = Generator::random_privkey();
 
     let mut context = Context::default();
-    let (tx_builder, lock_script) = bootstrap(
-        TransactionBuilder::default(),
-        &mut context,
-        pubkey_hash,
-    );
+    let (tx_builder, lock_script) =
+        bootstrap(TransactionBuilder::default(), &mut context, pubkey_hash);
     let tx_builder = with_time_header(tx_builder, &mut context, 1000);
 
     // prepare cells
@@ -189,7 +197,10 @@ fn test_sign_with_wrong_key() {
     let input = CellInput::new_builder()
         .previous_output(input_out_point)
         .build();
-    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
+    let outputs = vec![
+        new_cell_output(500, &lock_script),
+        new_cell_output(500, &lock_script),
+    ];
 
     let outputs_data = vec![Bytes::new(); 2];
 
@@ -216,11 +227,8 @@ fn test_sign_with_correct_key() {
     let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
 
     let mut context = Context::default();
-    let (tx_builder, lock_script) = bootstrap(
-        TransactionBuilder::default(),
-        &mut context,
-        pubkey_hash,
-    );
+    let (tx_builder, lock_script) =
+        bootstrap(TransactionBuilder::default(), &mut context, pubkey_hash);
     let tx_builder = with_time_header(tx_builder, &mut context, 1000);
 
     // prepare cells
@@ -229,7 +237,10 @@ fn test_sign_with_correct_key() {
         .previous_output(input_out_point.clone())
         .build();
 
-    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
+    let outputs = vec![
+        new_cell_output(500, &lock_script),
+        new_cell_output(500, &lock_script),
+    ];
     let outputs_data = vec![Bytes::new(); 2];
 
     // build transaction
@@ -256,11 +267,8 @@ fn test_multiple_time() {
     let pubkey_hash = blake160(&pubkey.serialize()).to_vec();
 
     let mut context = Context::default();
-    let (tx_builder, lock_script) = bootstrap(
-        TransactionBuilder::default(),
-        &mut context,
-        pubkey_hash,
-    );
+    let (tx_builder, lock_script) =
+        bootstrap(TransactionBuilder::default(), &mut context, pubkey_hash);
     let tx_builder = with_time_header(tx_builder, &mut context, 100);
     let tx_builder = with_time_header(tx_builder, &mut context, 1000);
 
@@ -270,7 +278,10 @@ fn test_multiple_time() {
         .previous_output(input_out_point.clone())
         .build();
 
-    let outputs = vec![new_cell_output(500, &lock_script), new_cell_output(500, &lock_script)];
+    let outputs = vec![
+        new_cell_output(500, &lock_script),
+        new_cell_output(500, &lock_script),
+    ];
     let outputs_data = vec![Bytes::new(); 2];
 
     // build transaction

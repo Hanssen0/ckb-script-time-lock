@@ -1,11 +1,11 @@
 use core::result::Result;
 
 use ckb_std::{
-    debug,
-    high_level::{load_script, load_header, QueryIter},
     ckb_constants::Source,
     ckb_types::{bytes::Bytes, prelude::*},
+    debug,
     dynamic_loading_c_impl::CKBDLContext,
+    high_level::{load_header, load_script, QueryIter},
 };
 
 use crate::error::Error;
@@ -28,11 +28,10 @@ pub fn main() -> Result<(), Error> {
     }
 
     // create a DL context with 128K buffer size
-    let mut context = unsafe{ CKBDLContext::<[u8; 128 * 1024]>::new()};
+    let mut context = unsafe { CKBDLContext::<[u8; 128 * 1024]>::new() };
     let lib = LibSecp256k1::load(&mut context);
 
     test_validate_blake2b_sighash_all(&lib, &pubkey)
-
 }
 
 fn has_passed_time_limit(time_limit: Bytes) -> bool {
@@ -41,7 +40,7 @@ fn has_passed_time_limit(time_limit: Bytes) -> bool {
         if time_limit.le(&timestamp) {
             return true;
         }
-    };
+    }
     false
 }
 
